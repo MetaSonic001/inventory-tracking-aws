@@ -1,25 +1,103 @@
-import { getAllItems } from '@/app/lib/dynamodb';
-import AddItemForm from './components/AddItemForm';
-import InventoryTable from './components/InventoryTable';
+// src/app/page.tsx
+'use client';
 
-export default async function Home() {
-  const items = await getAllItems();
+import { useState, useEffect } from 'react';
+import InventoryForm from '@/app/components/InventoryForm';
+import InventoryTable from '@/app/components/InventoryTable';
+
+interface InventoryItem {
+  ItemID: string;
+  ItemName: string;
+  Quantity: number;
+  Price: number;
+}
+
+export default function Home() {
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [editingItem, setEditingItem] = useState<InventoryItem | undefined>(undefined);
+
+  // Fetch inventory items
+  useEffect(() => {
+    fetchInventoryItems();
+  }, []);
+
+  const fetchInventoryItems = async () => {
+    try {
+      const response = await fetch('/api/inventory');
+      const data = await response.json();
+      setItems(data);
+    } catch (error) {
+      console.error('Failed to fetch inventory', error);
+      alert('Failed to load inventory');
+    }
+  };
+
+  // Add new item
+  const handleAddItem = async (newItem: {
+    itemName: string, 
+    quantity: number, 
+    price: number
+  }) => {
+    try {
+      const method = editingItem ? 'PUT' : 'POST';
+      const payload = editingItem 
+        ? { ...newItem, ItemID: editingItem.ItemID }
+        : newItem;
+
+      const response = await fetch('/api/inventory', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        fetchInventoryItems();
+        setEditingItem(undefined);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add/update item');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert(error instanceof Error ? error.message : 'An error occurred');
+    }
+  };
+
+  // Delete item
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      const response = await fetch(`/api/inventory?ItemID=${itemId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        fetchInventoryItems();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete item');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert(error instanceof Error ? error.message : 'An error occurred');
+    }
+  };
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Inventory Management System</h1>
+    <>
+      <h1 className="text-2xl font-bold mb-4">
+        Inventory Tracking System
+      </h1>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Add New Item</h2>
-          <AddItemForm />
-        </div>
-        
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Current Inventory</h2>
-          <InventoryTable items={items} />
-        </div>
-      </div>
-    </main>
+      <InventoryForm 
+        onAddItem={handleAddItem}
+        initialData={editingItem}
+      />
+      
+      <InventoryTable 
+        items={items}
+        onDeleteItem={handleDeleteItem}
+        onEditItem={setEditingItem}
+      />
+    </>
   );
 }
